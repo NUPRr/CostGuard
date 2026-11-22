@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cost Guard - serverless guard that stops unexpected expensive EC2 launches
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Description: Email address that receives Cost Guard alerts
+  DashboardKey:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Access key people type to open the dashboard (min 8 characters)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 120
+    MemorySize: 256
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  GuardTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: ts
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: ts
+          KeyType: RANGE
+
+  EngineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/engine/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref GuardTable
+          TOPIC_ARN: !Ref AlertTopic
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GuardTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertTopic.TopicName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ec2:DescribeInstances
+                - ec2:StopInstances
+              Resource: '*'
+      Events:
+        NewInstance:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.ec2
+              detail-type:
+                - AWS API Call via CloudTrail
+              detail:
+                eventSource:
+                  - ec2.amazonaws.com
+                eventName:
+                  - RunInstances
+
+  DashboardApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - content-type
+          - x-api-key
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/api/
+      Handler: app.lambda_handler
+      Timeout: 15
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref GuardTable
+          API_KEY: !Ref DashboardKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GuardTable
+      Events:
+        AnyCall:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DashboardApi
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: Paste this into dashboard/index.html
+    Value: !Sub 'https://${DashboardApi}.execute-api.${AWS::Region}.amazonaws.com'

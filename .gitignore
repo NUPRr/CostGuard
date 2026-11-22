@@ -1,0 +1,4 @@
+samconfig.toml
+local_data.json
+.aws-sam/
+__pycache__/
