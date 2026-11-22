@@ -195,6 +195,56 @@
   const USD_TO_INR = 88;       // approximate exchange rate, change if needed
 
   const $ = (id) => document.getElementById(id);
+    // ---- Live demo mode: used only on GitHub Pages, no server needed ----
+  const DEMO = location.hostname.endsWith("github.io");
+  const demoStore = (() => {
+    try { const s = JSON.parse(localStorage.getItem("costguard_demo")); if (s) return s; } catch (e) {}
+    return { settings: { auto_stop: true, allowed_types: ["t2.micro", "t3.micro", "t3.small"] }, events: [] };
+  })();
+  const demoSave = () => { try { localStorage.setItem("costguard_demo", JSON.stringify(demoStore)); } catch (e) {} };
+
+  function demoLaunch(type, when) {
+    const s = demoStore.settings;
+    const ok = s.allowed_types.map((t) => t.toLowerCase()).includes(type.toLowerCase());
+    let status, message;
+    if (ok) { status = "ALLOWED"; message = `${type} is on the allowed list. No action needed.`; }
+    else if (s.auto_stop) { status = "STOPPED"; message = `${type} is not allowed. It was stopped automatically.`; }
+    else { status = "FLAGGED"; message = `${type} is not allowed. Auto-stop is OFF, so it was left running.`; }
+    demoStore.events.unshift({
+      time: (when || new Date()).toISOString(),
+      instance_id: "i-" + Math.random().toString(16).slice(2, 19),
+      instance_type: type, region: "ap-south-1 (demo)", launched_by: "demo-user", status, message
+    });
+    demoStore.events = demoStore.events.slice(0, 50);
+    demoSave();
+  }
+
+  function demoSeed() {
+    const types = ["t3.micro", "t3.micro", "t3.small", "t3.medium", "t3.large", "c5.4xlarge", "p3.8xlarge", "g4dn.xlarge"];
+    demoStore.events = [];
+    const items = [];
+    for (let d = 6; d >= 0; d--) {
+      const n = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < n; i++) {
+        items.push({ when: new Date(Date.now() - d * 864e5 - Math.random() * 20 * 36e5),
+                     type: types[Math.floor(Math.random() * types.length)] });
+      }
+    }
+    items.sort((a, b) => a.when - b.when).forEach((i) => demoLaunch(i.type, i.when));
+  }
+
+  async function demoCall(path, options) {
+    if (getKey() !== "demo1234") throw new Error("WRONG_KEY");
+    if (path === "/settings" && options.method === "POST") {
+      const d = JSON.parse(options.body);
+      demoStore.settings = { auto_stop: !!d.auto_stop, allowed_types: d.allowed_types };
+      demoSave();
+      return demoStore.settings;
+    }
+    if (path === "/settings") return demoStore.settings;
+    if (path === "/events") return { events: demoStore.events };
+    throw new Error("Something went wrong. Please try again.");
+  }
   let settings = { auto_stop: true, allowed_types: [] };
   let chips = [];
   let dirty = false;
@@ -211,6 +261,7 @@
   }
 
   async function call(path, options = {}) {
+    if (DEMO) return demoCall(path, options);
     if (API_URL.startsWith("PASTE")) throw new Error("The dashboard is not connected yet. Add the API address in index.html.");
     let res;
     try {
@@ -367,6 +418,24 @@
   $("refreshBtn").onclick = load;
   $("logoutBtn").onclick = () => { setKey(""); showLogin(""); };
 
+    if (DEMO) {
+    setKey("demo1234");
+    document.body.insertAdjacentHTML("beforeend", `
+      <div style="height:90px"></div>
+      <div style="position:fixed;left:0;right:0;bottom:0;background:#10243a;color:#fff;padding:10px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;z-index:9;font:15px system-ui">
+        <strong>Demo mode</strong>
+        <select id="simType" style="padding:10px;border-radius:8px;font:inherit">
+          <option>t3.micro</option><option>t3.small</option><option>t3.medium</option><option>t3.large</option>
+          <option>c5.4xlarge</option><option>g4dn.xlarge</option><option>p3.8xlarge</option>
+        </select>
+        <button id="simBtn" style="padding:10px 16px;border:0;border-radius:8px;background:#0f8b6d;color:#fff;font:inherit;font-weight:600;min-height:44px">Simulate a launch</button>
+        <button id="seedBtn" style="padding:10px 16px;border:1px solid #5b7a99;border-radius:8px;background:transparent;color:#fff;font:inherit;font-weight:600;min-height:44px">Load sample week</button>
+        <button id="clearBtn" style="padding:10px 16px;border:1px solid #5b7a99;border-radius:8px;background:transparent;color:#fff;font:inherit;font-weight:600;min-height:44px">Clear</button>
+      </div>`);
+    $("simBtn").onclick = () => { demoLaunch($("simType").value); load(); };
+    $("seedBtn").onclick = () => { demoSeed(); load(); };
+    $("clearBtn").onclick = () => { demoStore.events = []; demoSave(); load(); };
+  }
   getKey() ? start() : showLogin("");
 </script>
 </body>
