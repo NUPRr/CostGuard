@@ -2,6 +2,7 @@
 
 Cost Guard is a safety guard for cloud servers. When someone starts an AWS server that is too expensive, it stops the server automatically and shows the estimated money saved on a simple dashboard that works on phone and laptop.
 
+**Live demo:** https://nuprr.github.io/CostGuard/dashboard/ (runs in your browser, no server needed)
 
 ## The problem
 
