@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cost Guard</title>
+<style>
+  :root {
+    --bg: #eef2f6; --card: #ffffff; --ink: #10243a; --muted: #5b6b7c; --line: #d6dee7;
+    --ok: #0f8b6d; --ok-bg: #e3f5ef; --warn: #b36b00; --warn-bg: #fdf0d9;
+    --bad: #c0392b; --bad-bg: #fbe5e2; --accent: #1b4f9c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1a28; --card: #16273a; --ink: #e8eef5; --muted: #9fb0c2; --line: #29405a;
+      --ok: #4fd1ad; --ok-bg: #123a33; --warn: #f0b24d; --warn-bg: #3d2f12;
+      --bad: #ff8b7d; --bad-bg: #44201c; --accent: #7fb0ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 16px; }
+  .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .brand { font-size: 1.2rem; font-weight: 800; letter-spacing: .2px; }
+  .updated { color: var(--muted); font-size: .85rem; }
+  h2 { font-size: 1.1rem; margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .hero { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; border-left: 10px solid var(--ok); }
+  .hero.off { border-left-color: var(--warn); }
+  .hero.bad { border-left-color: var(--bad); }
+  .sentence { font-size: clamp(1.5rem, 5.5vw, 2.2rem); line-height: 1.15; font-weight: 800; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: .95rem; max-width: 46ch; }
+  .switch { display: flex; align-items: center; gap: 12px; font-weight: 700; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; }
+  .track { width: 64px; height: 36px; border-radius: 36px; background: var(--line); position: relative; transition: background .2s; flex: none; }
+  .track::after { content: ""; position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch input:checked + .track { background: var(--ok); }
+  .switch input:checked + .track::after { transform: translateX(28px); }
+  .switch input:focus-visible + .track { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .saved { margin: 14px 0 0; display: grid; gap: 18px; grid-template-columns: 1fr; align-items: center; }
+  @media (min-width: 720px) { .saved { grid-template-columns: 1fr 1.4fr; } }
+  .saved .label { color: var(--muted); font-weight: 700; font-size: .9rem; text-transform: uppercase; letter-spacing: .5px; }
+  .saved .money { font-size: clamp(2.4rem, 9vw, 3.6rem); font-weight: 800; line-height: 1.05; color: var(--ok); margin: 4px 0; }
+  .saved .note { color: var(--muted); font-size: .85rem; margin: 0; }
+  .bars { display: flex; gap: 8px; align-items: flex-end; height: 160px; }
+  .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: .75rem; color: var(--muted); }
+  .bar em { font-style: normal; font-weight: 700; color: var(--ink); margin-bottom: 3px; min-height: 1em; }
+  .col { width: 100%; max-width: 46px; background: var(--ok); border-radius: 6px 6px 0 0; min-height: 4px; }
+  .col.zero { background: var(--line); }
+  .bar span { margin-top: 5px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+  .stat { padding: 14px 8px; text-align: center; }
+  .stat b { display: block; font-size: 2rem; line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  .stat.good b { color: var(--ok); }
+  .stat.warn b { color: var(--warn); }
+  .stat.bad b { color: var(--bad); }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 820px) { .grid { grid-template-columns: 1.5fr 1fr; align-items: start; } }
+  .alert { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .alert .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .pill { font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .pill.ALLOWED { background: var(--ok-bg); color: var(--ok); }
+  .pill.STOPPED { background: var(--warn-bg); color: var(--warn); }
+  .pill.FLAGGED, .pill.FAILED { background: var(--bad-bg); color: var(--bad); }
+  .alert p { margin: 6px 0 0; }
+  .alert small { color: var(--muted); display: block; margin-top: 4px; word-break: break-all; }
+  label { display: block; font-weight: 700; margin-bottom: 6px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 13px; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  button {
+    font: inherit; font-weight: 700; padding: 12px 18px; border: 0; border-radius: 10px;
+    background: var(--accent); color: #fff; cursor: pointer; min-height: 48px;
+  }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .hint { color: var(--muted); font-size: .92rem; margin: 0 0 12px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .add { display: flex; gap: 8px; }
+  .add input { flex: 1; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--ok-bg); color: var(--ok); font-weight: 700; padding: 4px 4px 4px 12px; border-radius: 30px; }
+  .chip button { background: transparent; color: inherit; min-height: 32px; width: 32px; padding: 0; font-size: 1.2rem; border-radius: 50%; }
+  .msg { margin-top: 10px; font-weight: 700; min-height: 1.4em; }
+  .msg.err { color: var(--bad); }
+  .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+  .help { margin-top: 14px; }
+  .help dt { font-weight: 700; margin-top: 8px; }
+  .help dd { margin: 0; color: var(--muted); font-size: .95rem; }
+  #login { max-width: 420px; margin: 12vh auto 0; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section id="login" class="card" hidden>
+    <h2>Open Cost Guard</h2>
+    <p class="hint">Type the access key you were given.</p>
+    <label for="keyInput">Access key</label>
+    <input id="keyInput" type="password" autocomplete="current-password">
+    <div class="row"><button id="loginBtn">Open dashboard</button></div>
+    <div id="loginMsg" class="msg err"></div>
+  </section>
+
+  <main id="app" hidden>
+    <div class="topbar">
+      <div class="brand">Cost Guard</div>
+      <div id="updated" class="updated"></div>
+    </div>
+
+    <section id="hero" class="card hero">
+      <div>
+        <div id="sentence" class="sentence">Checking...</div>
+        <p id="subline" class="sub"></p>
+      </div>
+      <label class="switch" for="autoStop">
+        <input id="autoStop" type="checkbox">
+        <span class="track"></span>
+        <span id="switchText">Auto-stop</span>
+      </label>
+    </section>
+
+    <section class="card saved" aria-label="Estimated spending prevented">
+      <div>
+        <div class="label">Spending prevented</div>
+        <div id="savedTotal" class="money">&#8377;0</div>
+        <p class="note">Estimate: rough hourly prices, assuming each stopped server would have run for 24 hours.</p>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:8px">Last 7 days</div>
+        <div id="bars" class="bars"></div>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="Summary of recent launches">
+      <div class="card stat good"><b id="sAllowed">0</b><span>Allowed</span></div>
+      <div class="card stat warn"><b id="sStopped">0</b><span>Stopped for you</span></div>
+      <div class="card stat bad"><b id="sAttention">0</b><span>Need attention</span></div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Recent activity</h2>
+        <div id="list"></div>
+        <div class="row"><button class="ghost" id="refreshBtn">Refresh now</button></div>
+      </section>
+
+      <section class="card">
+        <h2>Allowed server sizes</h2>
+        <p class="hint">Sizes on this list are fine. Anything else is treated as too expensive.</p>
+        <div id="chips" class="chips"></div>
+        <label for="newSize">Add a size</label>
+        <div class="add">
+          <input id="newSize" type="text" placeholder="for example t3.medium" autocapitalize="off">
+          <button class="ghost" id="addBtn">Add</button>
+        </div>
+        <div class="row"><button id="saveBtn">Save changes</button></div>
+        <div id="saveMsg" class="msg" role="status"></div>
+      </section>
+    </div>
+
+    <section class="card help">
+      <h2>What do these mean?</h2>
+      <dl>
+        <dt>Allowed</dt><dd>A server on your allowed list was started. Nothing to do.</dd>
+        <dt>Stopped</dt><dd>An expensive server was started and Cost Guard switched it off for you.</dd>
+        <dt>Left running</dt><dd>An expensive server was started, but auto-stop is off, so it kept running.</dd>
+        <dt>Could not stop</dt><dd>Cost Guard tried to stop it and failed. Please check it yourself.</dd>
+      </dl>
+      <div class="row"><button class="ghost" id="logoutBtn">Sign out</button></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  // Paste the ApiUrl printed after an AWS deployment between the quotes (no slash at the end).
+  const API_URL = "PASTE_API_URL_HERE";
+
+  // Rough illustrative prices in US dollars per hour. Edit these to match your region.
+  const PRICES = {
+    "t2.micro": 0.012, "t3.micro": 0.01, "t3.small": 0.02, "t3.medium": 0.04, "t3.large": 0.08,
+    "c5.4xlarge": 0.68, "g4dn.xlarge": 0.53, "p3.8xlarge": 12.24
+  };
+  const DEFAULT_PRICE = 0.1;   // used for sizes not listed above
+  const HOURS = 24;            // assumed hours a stopped server would have kept running
+  const USD_TO_INR = 88;       // approximate exchange rate, change if needed
+
+  const $ = (id) => document.getElementById(id);
+    // ---- Live demo mode: used only on GitHub Pages, no server needed ----
+  const DEMO = location.hostname.endsWith("github.io");
+  const demoStore = (() => {
+    try { const s = JSON.parse(localStorage.getItem("costguard_demo")); if (s) return s; } catch (e) {}
+    return { settings: { auto_stop: true, allowed_types: ["t2.micro", "t3.micro", "t3.small"] }, events: [] };
+  })();
+  const demoSave = () => { try { localStorage.setItem("costguard_demo", JSON.stringify(demoStore)); } catch (e) {} };
+
+  function demoLaunch(type, when) {
+    const s = demoStore.settings;
+    const ok = s.allowed_types.map((t) => t.toLowerCase()).includes(type.toLowerCase());
+    let status, message;
+    if (ok) { status = "ALLOWED"; message = `${type} is on the allowed list. No action needed.`; }
+    else if (s.auto_stop) { status = "STOPPED"; message = `${type} is not allowed. It was stopped automatically.`; }
+    else { status = "FLAGGED"; message = `${type} is not allowed. Auto-stop is OFF, so it was left running.`; }
+    demoStore.events.unshift({
+      time: (when || new Date()).toISOString(),
+      instance_id: "i-" + Math.random().toString(16).slice(2, 19),
+      instance_type: type, region: "ap-south-1 (demo)", launched_by: "demo-user", status, message
+    });
+    demoStore.events = demoStore.events.slice(0, 50);
+    demoSave();
+  }
+
+  function demoSeed() {
+    const types = ["t3.micro", "t3.micro", "t3.small", "t3.medium", "t3.large", "c5.4xlarge", "p3.8xlarge", "g4dn.xlarge"];
+    demoStore.events = [];
+    const items = [];
+    for (let d = 6; d >= 0; d--) {
+      const n = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < n; i++) {
+        items.push({ when: new Date(Date.now() - d * 864e5 - Math.random() * 20 * 36e5),
+                     type: types[Math.floor(Math.random() * types.length)] });
+      }
+    }
+    items.sort((a, b) => a.when - b.when).forEach((i) => demoLaunch(i.type, i.when));
+  }
+
+  async function demoCall(path, options) {
+    if (getKey() !== "demo1234") throw new Error("WRONG_KEY");
+    if (path === "/settings" && options.method === "POST") {
+      const d = JSON.parse(options.body);
+      demoStore.settings = { auto_stop: !!d.auto_stop, allowed_types: d.allowed_types };
+      demoSave();
+      return demoStore.settings;
+    }
+    if (path === "/settings") return demoStore.settings;
+    if (path === "/events") return { events: demoStore.events };
+    throw new Error("Something went wrong. Please try again.");
+  }
+  let settings = { auto_stop: true, allowed_types: [] };
+  let chips = [];
+  let dirty = false;
+  let timer = null;
+
+  const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  const inrShort = new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 });
+
+  const getKey = () => { try { return localStorage.getItem("costguard_key") || ""; } catch (e) { return ""; } };
+  const setKey = (k) => { try { k ? localStorage.setItem("costguard_key", k) : localStorage.removeItem("costguard_key"); } catch (e) {} };
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  async function call(path, options = {}) {
+    if (DEMO) return demoCall(path, options);
+    if (API_URL.startsWith("PASTE")) throw new Error("The dashboard is not connected yet. Add the API address in index.html.");
+    let res;
+    try {
+      res = await fetch(API_URL + path, {
+        ...options,
+        headers: { "x-api-key": getKey(), "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      throw new Error("Cannot reach Cost Guard. Check your connection.");
+    }
+    if (res.status === 401) throw new Error("WRONG_KEY");
+    if (!res.ok) throw new Error("Something went wrong. Please try again.");
+    return res.json();
+  }
+
+  function showLogin(message) {
+    clearInterval(timer);
+    $("app").hidden = true;
+    $("login").hidden = false;
+    $("loginMsg").textContent = message || "";
+  }
+
+  function renderChips() {
+    $("chips").innerHTML = chips.length
+      ? chips.map((t) => `<span class="chip">${esc(t)}<button data-t="${esc(t)}" aria-label="Remove ${esc(t)}">&times;</button></span>`).join("")
+      : '<span class="hint">No sizes allowed yet. Every new server will be stopped.</span>';
+  }
+
+  function renderSaved(events) {
+    let total = 0;
+    const perDay = {};
+    events.forEach((e) => {
+      if (e.status !== "STOPPED") return;
+      const price = PRICES[String(e.instance_type).toLowerCase()] ?? DEFAULT_PRICE;
+      const cost = price * HOURS * USD_TO_INR;
+      total += cost;
+      const k = new Date(e.time).toLocaleDateString("en-CA");
+      perDay[k] = (perDay[k] || 0) + cost;
+    });
+    $("savedTotal").textContent = inr.format(total);
+
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 864e5);
+      const k = d.toLocaleDateString("en-CA");
+      days.push({ label: d.toLocaleDateString("en-IN", { weekday: "short" }), v: perDay[k] || 0 });
+    }
+    const max = Math.max(1, ...days.map((d) => d.v));
+    $("bars").innerHTML = days.map((d) =>
+      `<div class="bar" title="${esc(inr.format(d.v))}">
+         <em>${d.v > 0 ? "&#8377;" + esc(inrShort.format(d.v)) : ""}</em>
+         <div class="col ${d.v > 0 ? "" : "zero"}" style="height:${Math.max(3, (d.v / max) * 100 * 0.75)}%"></div>
+         <span>${esc(d.label)}</span>
+       </div>`).join("");
+  }
+
+  function render(events) {
+    const allowed = events.filter((e) => e.status === "ALLOWED").length;
+    const stopped = events.filter((e) => e.status === "STOPPED").length;
+    const attention = events.filter((e) => e.status === "FLAGGED" || e.status === "FAILED").length;
+    $("sAllowed").textContent = allowed;
+    $("sStopped").textContent = stopped;
+    $("sAttention").textContent = attention;
+    renderSaved(events);
+
+    const hero = $("hero");
+    hero.className = "card hero";
+    if (attention > 0) {
+      hero.classList.add("bad");
+      $("sentence").textContent = "Something needs your attention";
+      $("subline").textContent = "An expensive server is still running or could not be stopped. See the list below.";
+    } else if (settings.auto_stop) {
+      $("sentence").textContent = "Your account is protected";
+      $("subline").textContent = "Expensive servers are stopped automatically and you get an email.";
+    } else {
+      hero.classList.add("off");
+      $("sentence").textContent = "Auto-stop is turned off";
+      $("subline").textContent = "Expensive servers are reported but left running.";
+    }
+    $("autoStop").checked = settings.auto_stop;
+    $("switchText").textContent = settings.auto_stop ? "Auto-stop is on" : "Auto-stop is off";
+    $("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+
+    const list = $("list");
+    if (!events.length) {
+      list.innerHTML = '<div class="empty">Nothing yet. New servers will appear here as soon as they are started.</div>';
+      return;
+    }
+    const labels = { ALLOWED: "Allowed", STOPPED: "Stopped", FLAGGED: "Left running", FAILED: "Could not stop" };
+    list.innerHTML = events.map((e) => `<article class="alert">
+        <div class="top"><strong>${esc(e.instance_type)}</strong><span class="pill ${esc(e.status)}">${esc(labels[e.status] || e.status)}</span></div>
+        <p>${esc(e.message)}</p>
+        <small>${esc(new Date(e.time).toLocaleString())} &middot; ${esc(e.region)}</small>
+        <small>Started by ${esc(e.launched_by)}</small>
+      </article>`).join("");
+  }
+
+  async function load() {
+    try {
+      const [s, ev] = await Promise.all([call("/settings"), call("/events")]);
+      settings = s;
+      if (!dirty) { chips = [...s.allowed_types]; renderChips(); }
+      render(ev.events);
+    } catch (e) {
+      if (e.message === "WRONG_KEY") { setKey(""); showLogin("That access key is not correct. Please try again."); }
+      else $("subline").textContent = e.message;
+    }
+  }
+
+  async function save(payload) {
+    const msg = $("saveMsg");
+    msg.className = "msg";
+    try {
+      await call("/settings", { method: "POST", body: JSON.stringify(payload) });
+      msg.textContent = "Saved.";
+      dirty = false;
+      await load();
+    } catch (e) {
+      msg.className = "msg err";
+      msg.textContent = e.message;
+    }
+  }
+
+  function addChip() {
+    const v = $("newSize").value.trim().toLowerCase();
+    if (v && !chips.includes(v)) { chips.push(v); dirty = true; renderChips(); }
+    $("newSize").value = "";
+    $("saveMsg").textContent = dirty ? "Press Save changes to keep this." : "";
+  }
+
+  function start() {
+    $("login").hidden = true;
+    $("app").hidden = false;
+    load();
+    clearInterval(timer);
+    timer = setInterval(load, 30000);
+  }
+
+  $("loginBtn").onclick = async () => {
+    setKey($("keyInput").value.trim());
+    $("loginMsg").textContent = "";
+    try { await call("/settings"); start(); }
+    catch (e) { setKey(""); $("loginMsg").textContent = e.message === "WRONG_KEY" ? "That access key is not correct." : e.message; }
+  };
+  $("keyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("loginBtn").click(); });
+  $("autoStop").onchange = () => save({ auto_stop: $("autoStop").checked, allowed_types: settings.allowed_types });
+  $("addBtn").onclick = addChip;
+  $("newSize").addEventListener("keydown", (e) => { if (e.key === "Enter") addChip(); });
+  $("chips").onclick = (e) => {
+    const t = e.target.getAttribute("data-t");
+    if (t) { chips = chips.filter((c) => c !== t); dirty = true; renderChips(); $("saveMsg").textContent = "Press Save changes to keep this."; }
+  };
+  $("saveBtn").onclick = () => save({ auto_stop: settings.auto_stop, allowed_types: chips });
+  $("refreshBtn").onclick = load;
+  $("logoutBtn").onclick = () => { setKey(""); showLogin(""); };
+
+    if (DEMO) {
+    setKey("demo1234");
+    document.body.insertAdjacentHTML("beforeend", `
+      <div style="height:90px"></div>
+      <div style="position:fixed;left:0;right:0;bottom:0;background:#10243a;color:#fff;padding:10px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;z-index:9;font:15px system-ui">
+        <strong>Demo mode</strong>
+        <select id="simType" style="padding:10px;border-radius:8px;font:inherit">
+          <option>t3.micro</option><option>t3.small</option><option>t3.medium</option><option>t3.large</option>
+          <option>c5.4xlarge</option><option>g4dn.xlarge</option><option>p3.8xlarge</option>
+        </select>
+        <button id="simBtn" style="padding:10px 16px;border:0;border-radius:8px;background:#0f8b6d;color:#fff;font:inherit;font-weight:600;min-height:44px">Simulate a launch</button>
+        <button id="seedBtn" style="padding:10px 16px;border:1px solid #5b7a99;border-radius:8px;background:transparent;color:#fff;font:inherit;font-weight:600;min-height:44px">Load sample week</button>
+        <button id="clearBtn" style="padding:10px 16px;border:1px solid #5b7a99;border-radius:8px;background:transparent;color:#fff;font:inherit;font-weight:600;min-height:44px">Clear</button>
+      </div>`);
+    $("simBtn").onclick = () => { demoLaunch($("simType").value); load(); };
+    $("seedBtn").onclick = () => { demoSeed(); load(); };
+    $("clearBtn").onclick = () => { demoStore.events = []; demoSave(); load(); };
+  }
+  getKey() ? start() : showLogin("");
+</script>
+</body>
+</html>
